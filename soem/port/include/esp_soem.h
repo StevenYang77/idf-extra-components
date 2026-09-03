@@ -1,6 +1,5 @@
 #pragma once
 
-#include "esp_err.h"
 #include "esp_eth_driver.h"
 #include "soem/soem.h"
 
@@ -8,12 +7,9 @@
 extern "C" {
 #endif
 
-#define ESP_SOEM_VERSION_STRING "0.0.1"
+ecx_contextt *esp_soem_init(esp_eth_handle_t eth_handle);
 
-const char *esp_soem_get_version(void);
-
-esp_err_t esp_soem_bind_eth(esp_eth_handle_t eth);
-
+void esp_soem_deinit(ecx_contextt *context);
 
 #ifdef __cplusplus
 }

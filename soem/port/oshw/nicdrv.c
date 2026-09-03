@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "esp_soem.h"
 #include "esp_eth.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
@@ -25,9 +24,6 @@ enum {
    primary or redundant. NOT real hardware MAC address. */
 const uint16 priMAC[3] = EC_PRIMARY_MAC_ARRAY;
 const uint16 secMAC[3] = EC_SECONDARY_MAC_ARRAY;
-
-/* Application-owned Ethernet driver handle used during port setup. */
-static esp_eth_handle_t s_bound_eth;
 
 static esp_err_t ecx_esp_eth_rx(esp_eth_handle_t hdl, uint8_t *buffer, uint32_t length, void *priv);
 static int ecx_inframe(ecx_portt *port, uint8 idx, int stacknumber);
@@ -103,55 +99,37 @@ uint8 ecx_getindex(ecx_portt *port)
 
 /* Initialize a SOEM network port backed by an ESP-IDF Ethernet driver.
    @param ifname, Logical network interface name, must be "esp_eth".
-   However, the actual Ethernet interface is provided via the bound Ethernet handle.
+   The Ethernet interface handle is provided through the port structure.
    @param secondary, Non-zero to enable redundant mode, not supported yet.
    @return >0 if OK, 0 if failed. */
 int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
 {
-    if ((ifname == NULL) || (strcmp(ifname, "esp_eth") != 0)) {
-        return 0;
-    }
-    if (s_bound_eth == NULL) {
-        return 0;
-    }
-    if (secondary) {
+    if ((port == NULL) ||
+        (ifname == NULL) ||
+        (strcmp(ifname, "esp_eth") != 0) ||
+        (port->eth_handle == NULL) ||
+        secondary) {
         return 0;
     }
 
-    port->getindex_mutex = osal_mutex_create();
-    port->tx_mutex = osal_mutex_create();
-    port->rx_mutex = osal_mutex_create();
-    if ((port->getindex_mutex == NULL) ||
-        (port->tx_mutex == NULL) ||
-        (port->rx_mutex == NULL)) {
-        return 0;
-    }
+    port->getindex_mutex = NULL;
+    port->tx_mutex = NULL;
+    port->rx_mutex = NULL;
+    port->rx_sem = NULL;
     port->sockhandle = -1;
-    /* Attach the application-owned Ethernet driver to this port. */
-    port->eth_handle = s_bound_eth;
-    /* Notify waiting SOEM tasks when receive activity occurs. */
-    port->rx_sem = xSemaphoreCreateBinary();
-    if (port->rx_sem == NULL) {
-        return 0;
-    }
-    /* Register the SOEM RX callback as the Ethernet driver's input path,
-       invoked when new Ethernet frame received, port must be passed as cb's private arg. */
-    if (esp_eth_update_input_path((esp_eth_handle_t)port->eth_handle,
-                                  ecx_esp_eth_rx, port) != ESP_OK) {
-        return 0;
-    }
     port->lastidx = 0;
     port->redstate = ECT_RED_NONE;
     port->redport = NULL;
     /* Point the generic stack view at storage owned by the primary port. */
-    port->stack.sock = &(port->sockhandle);
-    port->stack.txbuf = &(port->txbuf);
-    port->stack.txbuflength = &(port->txbuflength);
-    port->stack.tempbuf = &(port->tempinbuf);
-    port->stack.rxbuf = &(port->rxbuf);
-    port->stack.rxbufstat = &(port->rxbufstat);
-    port->stack.rxsa = &(port->rxsa);
+    port->stack.sock = &port->sockhandle;
+    port->stack.txbuf = &port->txbuf;
+    port->stack.txbuflength = &port->txbuflength;
+    port->stack.tempbuf = &port->tempinbuf;
+    port->stack.rxbuf = &port->rxbuf;
+    port->stack.rxbufstat = &port->rxbufstat;
+    port->stack.rxsa = &port->rxsa;
     port->stack.rxcnt = 0;
+
     /* Clear all the Rx buffer slots to EMPTY. */
     ecx_clear_rxbufstat(&(port->rxbufstat[0]));
 
@@ -161,12 +139,64 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
     }
     ec_setupheader(&(port->txbuf2));
 
+    port->getindex_mutex = osal_mutex_create();
+    port->tx_mutex = osal_mutex_create();
+    port->rx_mutex = osal_mutex_create();
+    if ((port->getindex_mutex == NULL) ||
+        (port->tx_mutex == NULL) ||
+        (port->rx_mutex == NULL)) {
+        goto fail;
+    }
+
+    /* Notify waiting SOEM tasks when receive activity occurs. */
+    port->rx_sem = xSemaphoreCreateBinary();
+    if (port->rx_sem == NULL) {
+        goto fail;
+    }
+
+    /* Register the SOEM RX callback as the Ethernet driver's input path,
+       invoked when new Ethernet frame received, port must be passed as cb's private arg. */
+    if (esp_eth_update_input_path((esp_eth_handle_t)port->eth_handle,
+                                  ecx_esp_eth_rx, port) != ESP_OK) {
+        goto fail;
+    }
+
     return 1;
+
+fail:
+    if (port->rx_sem != NULL) {
+        vSemaphoreDelete((SemaphoreHandle_t)port->rx_sem);
+        port->rx_sem = NULL;
+    }
+    osal_mutex_destroy(port->getindex_mutex);
+    osal_mutex_destroy(port->tx_mutex);
+    osal_mutex_destroy(port->rx_mutex);
+    port->getindex_mutex = NULL;
+    port->tx_mutex = NULL;
+    port->rx_mutex = NULL;
+    port->eth_handle = NULL;
+
+    return 0;
 }
 
 /* Detach the Ethernet receive path and release port resources. */
 int ecx_closenic(ecx_portt *port)
 {
+    if (port == NULL) {
+        return 0;
+    }
+
+    if (port->eth_handle != NULL) {
+        (void)esp_eth_update_input_path(
+            (esp_eth_handle_t)port->eth_handle, NULL, NULL);
+        port->eth_handle = NULL; /* The Ethernet driver remains owned by the application. */
+    }
+
+    if (port->rx_sem != NULL) {
+        vSemaphoreDelete((SemaphoreHandle_t)port->rx_sem);
+        port->rx_sem = NULL;
+    }
+
     osal_mutex_destroy(port->getindex_mutex);
     osal_mutex_destroy(port->tx_mutex);
     osal_mutex_destroy(port->rx_mutex);
@@ -174,27 +204,7 @@ int ecx_closenic(ecx_portt *port)
     port->tx_mutex = NULL;
     port->rx_mutex = NULL;
 
-    if (port->eth_handle != NULL) {
-        (void)esp_eth_update_input_path((esp_eth_handle_t)port->eth_handle, NULL, NULL);
-    }
-    if (port->rx_sem != NULL) {
-        vSemaphoreDelete((SemaphoreHandle_t)port->rx_sem);
-        port->rx_sem = NULL;
-    }
-    /* The Ethernet driver remains owned by the application. */
-    port->eth_handle = NULL;
-
     return 0;
-}
-
-/* Save the application-owned Ethernet driver for the next port setup. */
-esp_err_t esp_soem_bind_eth(esp_eth_handle_t eth)
-{
-    if (eth == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    s_bound_eth = eth;
-    return ESP_OK;
 }
 
 /* Transmit a prepared Ethernet frame through ESP-IDF Ethernet driver.

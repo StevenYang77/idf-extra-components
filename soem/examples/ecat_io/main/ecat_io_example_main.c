@@ -46,11 +46,8 @@ static const char *TAG = "ecat_io"; /* 给日志加一个模块名字 */
 static EventGroupHandle_t s_eth_events; /* 事件组句柄，事件组暂时理解成一个由很多bit组成的事件状态板；
                                         eth事件cb()里SET，app_main()里WAIT */
 
-/*
- * ecx_contextt很大，不能作为app_main局部变量放在任务栈中。
- * static全局变量存放在BSS，并自动清零。
- */
-static ecx_contextt s_ecat_context;
+/* SOEM allocates the context from the heap during initialization. */
+static ecx_contextt *s_ecat_context;
 
 static void eth_event_handler(void *arg,
                               esp_event_base_t event_base,
@@ -141,7 +138,7 @@ static esp_err_t eth_init(esp_eth_handle_t *eth_handle_out)
 */
 static int configure_runtime_mapping(uint16 slave_number)
 {
-    ec_slavet *slave = &s_ecat_context.slavelist[slave_number]; /* SOEM扫描完以后维护的从站描述表 */
+    ec_slavet *slave = &s_ecat_context->slavelist[slave_number]; /* SOEM扫描完以后维护的从站描述表 */
     uint16 config_address = slave->configadr; /* 前面扫描、初始化时SOEM给这个从站分配过配置地址，可用FRxx指令*/
 
     ec_smt sm_output; /* 一整组SyncManager配置寄存器的数据结构 */
@@ -168,7 +165,7 @@ static int configure_runtime_mapping(uint16 slave_number)
     写入整个sm_output结构体，最多允许6000us完成整套FPWR的发送和等待对应返回帧；
     ecx_FPWR()返回的软件wkc，<0代表没收到返回帧，=0代表收到返回帧但没从站处理过，皆需报错*/
     int wkc = ecx_FPWR(
-        &s_ecat_context.port,
+        &s_ecat_context->port,
         config_address,
         ECT_REG_SM0,
         sizeof(sm_output),
@@ -180,7 +177,7 @@ static int configure_runtime_mapping(uint16 slave_number)
     }
 
     wkc = ecx_FPWR(
-        &s_ecat_context.port,
+        &s_ecat_context->port,
         config_address,
         ECT_REG_SM1,
         sizeof(sm_input),
@@ -212,7 +209,7 @@ static int configure_runtime_mapping(uint16 slave_number)
     fmmu_input.FMMUactive = 1;
 
     wkc = ecx_FPWR(
-        &s_ecat_context.port,
+        &s_ecat_context->port,
         config_address,
         ECT_REG_FMMU0,
         sizeof(fmmu_output),
@@ -224,7 +221,7 @@ static int configure_runtime_mapping(uint16 slave_number)
     }
 
     wkc = ecx_FPWR(
-        &s_ecat_context.port,
+        &s_ecat_context->port,
         config_address,
         ECT_REG_FMMU1,
         sizeof(fmmu_input),
@@ -260,11 +257,11 @@ OP状态必须用专门的函数，因为OP转换必须要有持续周期通信�
 static int request_clean_state(uint16 slave_number,
                                uint16 requested_state)
 {
-    ec_slavet *slave = &s_ecat_context.slavelist[slave_number];
+    ec_slavet *slave = &s_ecat_context->slavelist[slave_number];
 
     slave->state = requested_state; /* 设目标状态，先在SOEM内存里写“我想要什么状态” */
 
-    int wkc = ecx_writestate(&s_ecat_context, slave_number); /* 向ESC发状态切换命令 */
+    int wkc = ecx_writestate(s_ecat_context, slave_number); /* 向ESC发状态切换命令 */
     ESP_LOGI(TAG,
              "State request 0x%02x WKC=%d",
              requested_state,
@@ -276,7 +273,7 @@ static int request_clean_state(uint16 slave_number,
 
     /* 函数内部不断读取从站AL Status，发现是目标状态了就返回，发现还不是就继续检查，直到超时返回 */
     (void)ecx_statecheck(
-        &s_ecat_context,
+        s_ecat_context,
         slave_number,
         requested_state,
         EC_TIMEOUTSTATE);
@@ -284,7 +281,7 @@ static int request_clean_state(uint16 slave_number,
     vTaskDelay(pdMS_TO_TICKS(20)); /* 阻塞延迟，给ESC时间让状态切换命令产生作用、状态稳定下来，感觉没必要 */
     /* 函数内部会读取全部从站状态并更新 ec_slave/slavelist；
     不拿ecx_statecheck()的返回值作为最终成功标准，因为它只检查AL基础状态，会忽略0x10 ERROR位 */
-    (void)ecx_readstate(&s_ecat_context);
+    (void)ecx_readstate(s_ecat_context);
 
     ESP_LOGI(TAG,
              "State result: state=0x%04x, "
@@ -302,14 +299,14 @@ static int request_clean_state(uint16 slave_number,
 static int request_operational(uint16 slave_number,
                                uint8 process_image[2])
 {
-    ec_slavet *slave = &s_ecat_context.slavelist[slave_number];
+    ec_slavet *slave = &s_ecat_context->slavelist[slave_number];
 
     /* 请求OP前，先在SAFE-OP下发送10帧有效过程数据，先证明过程数据已经连续、稳定、有效 */
     for (int cycle = 0; cycle < 10; cycle++) {
         process_image[0] = 0x00;
 
         int wkc = ecx_LRW(
-            &s_ecat_context.port,
+            &s_ecat_context->port,
             OUTPUT_LOG_ADDR,
             2,
             process_image,
@@ -328,7 +325,7 @@ static int request_operational(uint16 slave_number,
 
     slave->state = EC_STATE_OPERATIONAL;
 
-    int state_wkc = ecx_writestate(&s_ecat_context, slave_number); /*向ESC发送OP切换命令 */
+    int state_wkc = ecx_writestate(s_ecat_context, slave_number); /*向ESC发送OP切换命令 */
     ESP_LOGI(TAG, "OP state request WKC=%d", state_wkc);
 
     if (state_wkc <= 0) {
@@ -341,7 +338,7 @@ static int request_operational(uint16 slave_number,
 
         /* 向ESC发送LRW命令，读写过程数据 */
         int wkc = ecx_LRW(
-            &s_ecat_context.port,
+            &s_ecat_context->port,
             OUTPUT_LOG_ADDR,
             2,
             process_image,
@@ -358,7 +355,7 @@ static int request_operational(uint16 slave_number,
         /* 函数内部不断读取从站AL Status，发现是目标状态了就返回，发现还不是就继续检查，直到超时返回；
         很可能每次都耗满3ms； */
         uint16 reached_state = ecx_statecheck(
-            &s_ecat_context,
+            s_ecat_context,
             slave_number,
             EC_STATE_OPERATIONAL,
             EC_TIMEOUTRET);
@@ -370,7 +367,7 @@ static int request_operational(uint16 slave_number,
         vTaskDelay(pdMS_TO_TICKS(IO_CYCLE_PERIOD_MS));
     }
 
-    (void)ecx_readstate(&s_ecat_context);
+    (void)ecx_readstate(s_ecat_context);
 
     ESP_LOGI(TAG,
              "OP state result: state=0x%04x, "
@@ -410,28 +407,21 @@ void app_main(void)
         return;
     }
 
-    /* 只把应用拥有的句柄交给组件借用；尚未启动SOEM */
-    ESP_ERROR_CHECK(esp_soem_bind_eth(eth_handle));
-    ESP_LOGI(TAG, "esp_eth handle bound to SOEM nicdrv");
-
-    /*
-    * "esp_eth"是我们约定的适配器名字。
-    * ecx_init最终调用自己移植的ecx_setupnic()，挂接RX回调并初始化端口。
-    */
-    if (!ecx_init(&s_ecat_context, "esp_eth")) {
-        ESP_LOGE(TAG, "SOEM port initialization failed");
+    s_ecat_context = esp_soem_init(eth_handle);
+    if (s_ecat_context == NULL) {
+        ESP_LOGE(TAG, "SOEM initialization failed");
         return;
     }
-    ESP_LOGI(TAG, "SOEM port initialized");
+    ESP_LOGI(TAG, "SOEM initialized");
 
     /*
     * 扫描EtherCAT总线、分配从站配置地址、读取基本SII信息，
     * 并尝试让从站进入PRE-OP。
     */
-    int slave_count = ecx_config_init(&s_ecat_context);
+    int slave_count = ecx_config_init(s_ecat_context);
     if (slave_count <= 0) {
         ESP_LOGE(TAG, "No EtherCAT slaves found");
-        ecx_close(&s_ecat_context);
+        esp_soem_deinit(s_ecat_context);
         return;
     }
 
@@ -440,7 +430,7 @@ void app_main(void)
     /* 扫描后限制只能连接这一块板 */
     if (slave_count != 1) {
         ESP_LOGE(TAG, "Expected exactly one EtherCAT slave");
-        ecx_close(&s_ecat_context);
+        esp_soem_deinit(s_ecat_context);
         return;
     }
 
@@ -451,7 +441,7 @@ void app_main(void)
          * ecx_statecheck只用状态低四位判断，因此它可能在ERROR位清除前返回。
          */
         (void)ecx_statecheck(
-            &s_ecat_context,
+            s_ecat_context,
             (uint16)i,
             EC_STATE_PRE_OP,
             EC_TIMEOUTSTATE);
@@ -461,15 +451,15 @@ void app_main(void)
          */
         vTaskDelay(pdMS_TO_TICKS(20));
 
-        int lowest_state = ecx_readstate(&s_ecat_context);
-        ec_slavet *slave = &s_ecat_context.slavelist[i];
+        int lowest_state = ecx_readstate(s_ecat_context);
+        ec_slavet *slave = &s_ecat_context->slavelist[i];
         /* 从站身份检查 */
         if ((slave->eep_man != EXPECTED_VENDOR_ID) ||
             (slave->eep_id != EXPECTED_PRODUCT_ID) ||
             (slave->eep_rev != EXPECTED_REVISION)) {
             ESP_LOGE(TAG,
                      "Unexpected slave identity; refusing register configuration");
-            ecx_close(&s_ecat_context);
+            esp_soem_deinit(s_ecat_context);
             return;
         }
 
@@ -510,17 +500,17 @@ void app_main(void)
             slave->state =
             (slave->state & 0x000f) | EC_STATE_ACK;
 
-            int ack_wkc = ecx_writestate(&s_ecat_context, (uint16)i);
+            int ack_wkc = ecx_writestate(s_ecat_context, (uint16)i);
             ESP_LOGI(TAG, "AL error acknowledge WKC=%d", ack_wkc);
 
             if (ack_wkc <= 0) {
                 ESP_LOGE(TAG, "Failed to send AL error acknowledge");
-                ecx_close(&s_ecat_context);
+                esp_soem_deinit(s_ecat_context);
                 return;
             }
 
             vTaskDelay(pdMS_TO_TICKS(20));
-            (void)ecx_readstate(&s_ecat_context);
+            (void)ecx_readstate(s_ecat_context);
 
             ESP_LOGI(TAG,
                     "After ACK: state=0x%04x, AL status=0x%04x (%s)",
@@ -535,17 +525,17 @@ void app_main(void)
             slave->state = EC_STATE_PRE_OP;
 
             int preop_wkc =
-                ecx_writestate(&s_ecat_context, (uint16)i);
+                ecx_writestate(s_ecat_context, (uint16)i);
             ESP_LOGI(TAG, "Clean PRE-OP request WKC=%d", preop_wkc);
 
             if (preop_wkc <= 0) {
                 ESP_LOGE(TAG, "Failed to send clean PRE-OP request");
-                ecx_close(&s_ecat_context);
+                esp_soem_deinit(s_ecat_context);
                 return;
             }
 
             vTaskDelay(pdMS_TO_TICKS(20));
-            (void)ecx_readstate(&s_ecat_context);
+            (void)ecx_readstate(s_ecat_context);
 
             ESP_LOGI(TAG,
                     "After clean PRE-OP request: "
@@ -564,7 +554,7 @@ void app_main(void)
                     slave->state,
                     slave->ALstatuscode,
                     ec_ALstatuscode2string(slave->ALstatuscode));
-            ecx_close(&s_ecat_context);
+            esp_soem_deinit(s_ecat_context);
             return;
         }
 
@@ -575,14 +565,14 @@ void app_main(void)
     确认这次配置没有把从站“配坏”。如果出现AL错误或掉出PRE-OP，就立即停止 */
     if (!configure_runtime_mapping(1)) {
         ESP_LOGE(TAG, "Runtime SM/FMMU mapping failed");
-        ecx_close(&s_ecat_context);
+        esp_soem_deinit(s_ecat_context);
         return;
     }
 
     vTaskDelay(pdMS_TO_TICKS(20)); /* blocking delay，给从站ESC一点时间，让刚写进去的配置产生作用、状态稳定下来 */
-    (void)ecx_readstate(&s_ecat_context); /*重新读取各从站AL Status及其Code，更新soem内存中的描述 */
+    (void)ecx_readstate(s_ecat_context); /*重新读取各从站AL Status及其Code，更新soem内存中的描述 */
 
-    ec_slavet *slave = &s_ecat_context.slavelist[1];
+    ec_slavet *slave = &s_ecat_context->slavelist[1];
     ESP_LOGI(TAG,
              "After mapping: state=0x%04x, AL status=0x%04x (%s)",
              slave->state,
@@ -592,7 +582,7 @@ void app_main(void)
     if ((slave->state != EC_STATE_PRE_OP) || /* 配置完后仍然处于pre-op阶段 */
         (slave->ALstatuscode != 0)) { /* AL Status Code全零，表示没有错误*/
         ESP_LOGE(TAG, "Slave left clean PRE-OP after mapping");
-        ecx_close(&s_ecat_context);
+        esp_soem_deinit(s_ecat_context);
         return;
     }
 
@@ -601,7 +591,7 @@ void app_main(void)
 
     if (!request_clean_state(1, EC_STATE_SAFE_OP)) {
         ESP_LOGE(TAG, "Slave did not reach clean SAFE-OP");
-        ecx_close(&s_ecat_context);
+        esp_soem_deinit(s_ecat_context);
         return;
     }
 
@@ -630,7 +620,7 @@ void app_main(void)
         process_image[0] = 0x00;
 
         int wkc = ecx_LRW(
-            &s_ecat_context.port,
+            &s_ecat_context->port,
             OUTPUT_LOG_ADDR,
             sizeof(process_image),
             process_image,
@@ -678,8 +668,8 @@ void app_main(void)
             wkc_other);
 
     /* 全部探针周期跑完后，再次读取ESC AL状态，确认5s持续LRW不会让从站状态机出错 */
-    (void)ecx_readstate(&s_ecat_context);
-    slave = &s_ecat_context.slavelist[1];
+    (void)ecx_readstate(s_ecat_context);
+    slave = &s_ecat_context->slavelist[1];
 
     ESP_LOGI(TAG,
             "After SAFE-OP probe: state=0x%04x, "
@@ -703,7 +693,7 @@ void app_main(void)
         ESP_LOGE(TAG, "Slave did not reach clean OPERATIONAL");
 
         (void)request_clean_state(1, EC_STATE_INIT);
-        ecx_close(&s_ecat_context);
+        esp_soem_deinit(s_ecat_context);
         return;
     }
 
@@ -723,7 +713,7 @@ void app_main(void)
         process_image[0] = 0x00;
 
         int wkc = ecx_LRW(
-            &s_ecat_context.port,
+            &s_ecat_context->port,
             OUTPUT_LOG_ADDR,
             sizeof(process_image),
             process_image,
@@ -751,8 +741,8 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(PROBE_PERIOD_MS));
     }
 
-    (void)ecx_readstate(&s_ecat_context);
-    slave = &s_ecat_context.slavelist[1];
+    (void)ecx_readstate(s_ecat_context);
+    slave = &s_ecat_context->slavelist[1];
 
     ESP_LOGI(TAG,
             "OP WKC summary: good=%d bad=%d",
@@ -780,11 +770,11 @@ void app_main(void)
 
     // if (!request_clean_state(1, EC_STATE_INIT)) {
     //     ESP_LOGE(TAG, "Slave did not return to clean INIT");
-    //     ecx_close(&s_ecat_context);
+    //     esp_soem_deinit(s_ecat_context);
     //     return;
     // }
 
-    // ecx_close(&s_ecat_context);
+    // esp_soem_deinit(s_ecat_context);
     // ESP_LOGI(TAG, "SOEM port closed");
 
     /*
@@ -816,7 +806,7 @@ void app_main(void)
         process_image[0] = next_output;
 
         int wkc = ecx_LRW(
-            &s_ecat_context.port,
+            &s_ecat_context->port,
             OUTPUT_LOG_ADDR,
             sizeof(process_image),
             process_image,
@@ -895,7 +885,7 @@ void app_main(void)
             process_image[0] = 0x00;
 
             int wkc = ecx_LRW(
-                &s_ecat_context.port,
+                &s_ecat_context->port,
                 OUTPUT_LOG_ADDR,
                 sizeof(process_image),
                 process_image,
@@ -934,6 +924,6 @@ void app_main(void)
                  "skipping output and state cleanup");
     }
 
-    ecx_close(&s_ecat_context);
+    esp_soem_deinit(s_ecat_context);
     ESP_LOGI(TAG, "SOEM port closed");
 }
