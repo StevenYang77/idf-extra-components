@@ -2,44 +2,50 @@ set(SOEM_ROOT "${CMAKE_CURRENT_LIST_DIR}/soem") #设置soem源码仓库根路径
 
 # -----------------------------------------------------------------------------------
 # SOEM的ec_options.h由模板ec_options.h.in在编译时生成
+
+# SOEM build-time resource limits
 set(EC_BUFSIZE EC_MAXECATFRAME)
-set(EC_MAXBUF 16)
-set(EC_MAXEEPBITMAP 128)
+set(EC_MAXBUF ${CONFIG_EC_MAXBUF})
+set(EC_MAXEEPBITMAP ${CONFIG_EC_MAXEEPBITMAP})
 set(EC_MAXEEPBUF "EC_MAXEEPBITMAP << 5")
-set(EC_LOGGROUPOFFSET 16)
-set(EC_MAXELIST 64)
-set(EC_MAXNAME 40)
-set(EC_MAXSLAVE 200)
-set(EC_MAXGROUP 2)
-set(EC_MAXIOSEGMENTS 64)
-set(EC_MAXMBX 1486)
-set(EC_MBXPOOLSIZE 32)
-set(EC_MAXEEPDO 0x200)
-set(EC_MAXSM 8)
-set(EC_MAXFMMU 4)
-set(EC_MAXLEN_ADAPTERNAME 128)
-set(EC_MAX_MAPT 1)
-set(EC_MAXODLIST 1024)
-set(EC_MAXOELIST 256)
-set(EC_SOE_MAXNAME 60)
-set(EC_SOE_MAXMAPPING 64)
+set(EC_LOGGROUPOFFSET ${CONFIG_EC_LOGGROUPOFFSET})
+set(EC_MAXELIST ${CONFIG_EC_MAXELIST})
+set(EC_MAXNAME ${CONFIG_EC_MAXNAME})
+set(EC_MAXSLAVE ${CONFIG_EC_MAXSLAVE})
+set(EC_MAXGROUP ${CONFIG_EC_MAXGROUP})
+set(EC_MAXIOSEGMENTS ${CONFIG_EC_MAXIOSEGMENTS})
+set(EC_MAXMBX ${CONFIG_EC_MAXMBX})
+set(EC_MBXPOOLSIZE ${CONFIG_EC_MBXPOOLSIZE})
+set(EC_MAXEEPDO ${CONFIG_EC_MAXEEPDO})
+set(EC_MAXSM ${CONFIG_EC_MAXSM})
+set(EC_MAXFMMU ${CONFIG_EC_MAXFMMU})
+set(EC_MAXLEN_ADAPTERNAME ${CONFIG_EC_MAXLEN_ADAPTERNAME})
+set(EC_MAX_MAPT ${CONFIG_EC_MAX_MAPT})
+set(EC_MAXODLIST ${CONFIG_EC_MAXODLIST})
+set(EC_MAXOELIST ${CONFIG_EC_MAXOELIST})
+set(EC_SOE_MAXNAME ${CONFIG_EC_SOE_MAXNAME})
+set(EC_SOE_MAXMAPPING ${CONFIG_EC_SOE_MAXMAPPING})
 
-set(EC_TIMEOUTRET 2000)                                         # 超时单位均为微秒
+# SOEM timeouts are expressed in microseconds
+set(EC_TIMEOUTRET ${CONFIG_EC_TIMEOUTRET})
 set(EC_TIMEOUTRET3 "EC_TIMEOUTRET * 3")
-set(EC_TIMEOUTSAFE 20000)
-set(EC_TIMEOUTEEP 20000)
-set(EC_TIMEOUTTXM 20000)
-set(EC_TIMEOUTRXM 700000)
-set(EC_TIMEOUTSTATE 2000000)
-set(EC_DEFAULTRETRIES 3)
+set(EC_TIMEOUTSAFE ${CONFIG_EC_TIMEOUTSAFE})
+set(EC_TIMEOUTEEP ${CONFIG_EC_TIMEOUTEEP})
+set(EC_TIMEOUTTXM ${CONFIG_EC_TIMEOUTTXM})
+set(EC_TIMEOUTRXM ${CONFIG_EC_TIMEOUTRXM})
+set(EC_TIMEOUTSTATE ${CONFIG_EC_TIMEOUTSTATE})
+set(EC_DEFAULTRETRIES ${CONFIG_EC_DEFAULTRETRIES})
 
-set(EC_PRIMARY_MAC_ARRAY "{0x0101, 0x0101, 0x0101}")            # 逻辑MAC，非网卡真实MAC
+# Logical MAC patterns used by SOEM for path identification
+set(EC_PRIMARY_MAC_ARRAY "{0x0101, 0x0101, 0x0101}")
 set(EC_SECONDARY_MAC_ARRAY "{0x0404, 0x0404, 0x0404}")
 
-configure_file(                                                 # 打开.in文件，把所有变量名替换成set值，写成新文件
-    "${SOEM_ROOT}/include/soem/ec_options.h.in"                 # 模板文件位置
-    "${CMAKE_CURRENT_BINARY_DIR}/include/soem/ec_options.h"     # 新文件输出位置，放在本次编译的产出build目录内
-)
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    configure_file(                                                 # 打开.in文件，把所有变量名替换成set值，写成新文件
+        "${SOEM_ROOT}/include/soem/ec_options.h.in"                 # 模板文件位置
+        "${CMAKE_CURRENT_BINARY_DIR}/include/soem/ec_options.h"     # 新文件输出位置，放在本次编译的产出build目录内
+    )
+endif()
 
 # -----------------------------------------------------------------------------------
 set(SOEM_CORE_SOURCES
@@ -79,9 +85,7 @@ idf_component_register(
 
     REQUIRES                                        # 本组件公开头文件里需要的依赖
         esp_eth
-        freertos
 
     PRIV_REQUIRES                                   # 本组件内部实现所需的其它ESP-IDF组件依赖
-        esp_rom
         esp_timer
 )
