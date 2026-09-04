@@ -1,0 +1,4 @@
+soem/examples/ecat_io:
+  enable:
+    - if: IDF_TARGET == "esp32p4"
+      reason: "The example uses the ESP32-P4 internal EMAC and board-specific PHY configuration."
