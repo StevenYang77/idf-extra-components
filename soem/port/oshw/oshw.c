@@ -1,11 +1,10 @@
 /*
  * This software is dual-licensed under GPLv3 and a commercial
- * license. See the file LICENSE.md distributed with this software for
+ * license. See the LICENSE file distributed with this software for
  * full license information.
  */
 
 #include "oshw.h"
-
 #include <stdlib.h>
 #include <string.h>
 

@@ -1,3 +1,9 @@
+/*
+ * This software is dual-licensed under GPLv3 and a commercial
+ * license. See the LICENSE file distributed with this software for
+ * full license information.
+ */
+
 #ifndef ESP_SOEM_OSAL_DEFS_H
 #define ESP_SOEM_OSAL_DEFS_H
 
@@ -7,7 +13,6 @@ extern "C" {
 
 #include <stdio.h>
 #include <time.h>
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"

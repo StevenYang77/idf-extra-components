@@ -1,5 +1,10 @@
-#include "esp_soem.h"
+/*
+ * SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
+#include "esp_soem.h"
 #include <stdlib.h>
 
 /* Initialize SOEM with an ESP-IDF Ethernet driver.
