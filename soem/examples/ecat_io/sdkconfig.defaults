@@ -1,4 +1,2 @@
-# 编译时生成的sdkconfig基于以下默认配置
-# -----------------------------------------------------------------------------------
-CONFIG_ETH_ENABLED=y            # 启用Ethernet相关功能
-CONFIG_ETH_USE_ESP32_EMAC=y     # 使用ESP32内部的Ethernet MAC外设
+CONFIG_ETH_ENABLED=y
+CONFIG_ETH_USE_ESP32_EMAC=y

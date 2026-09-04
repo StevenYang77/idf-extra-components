@@ -2,4 +2,4 @@ description: EtherCAT digital IO example
 dependencies:
   espressif/soem:
     version: "*"
-    override_path: "../../../" #本地相对路径，避免从registry下载
+    override_path: "../../../"
