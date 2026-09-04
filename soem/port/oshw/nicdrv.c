@@ -103,10 +103,10 @@ uint8 ecx_getindex(ecx_portt *port)
 int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
 {
     if ((port == NULL) ||
-        (ifname == NULL) ||
-        (strcmp(ifname, "esp_eth") != 0) ||
-        (port->eth_handle == NULL) ||
-        secondary) {
+            (ifname == NULL) ||
+            (strcmp(ifname, "esp_eth") != 0) ||
+            (port->eth_handle == NULL) ||
+            secondary) {
         return 0;
     }
 
@@ -141,8 +141,8 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
     port->tx_mutex = osal_mutex_create();
     port->rx_mutex = osal_mutex_create();
     if ((port->getindex_mutex == NULL) ||
-        (port->tx_mutex == NULL) ||
-        (port->rx_mutex == NULL)) {
+            (port->tx_mutex == NULL) ||
+            (port->rx_mutex == NULL)) {
         goto fail;
     }
 
@@ -219,7 +219,7 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
     int lp = port->txbuflength[idx];
     esp_eth_handle_t eth = (esp_eth_handle_t)port->eth_handle;
     if ((eth == NULL) ||
-        (esp_eth_transmit(eth, port->txbuf[idx], (size_t)lp) != ESP_OK)) {
+            (esp_eth_transmit(eth, port->txbuf[idx], (size_t)lp) != ESP_OK)) {
         port->rxbufstat[idx] = EC_BUF_EMPTY; /* In case the slot occupied still. */
         return -1;
     }
@@ -229,7 +229,7 @@ int ecx_outframe(ecx_portt *port, uint8 idx, int stacknumber)
 /* Prepare the path(only primary yet) marker and transmit the frame. */
 int ecx_outframe_red(ecx_portt *port, uint8 idx)
 {
-    ec_etherheadert *ehp = (ec_etherheadert *)&(port->txbuf[idx]);
+    ec_etherheadert *ehp = (ec_etherheadert *) & (port->txbuf[idx]);
     ehp->sa1 = oshw_htons(priMAC[1]); /* Mark the frame as primary-path traffic. */
 
     return ecx_outframe(port, idx, 0);
@@ -275,7 +275,7 @@ static esp_err_t ecx_esp_eth_rx(esp_eth_handle_t hdl, uint8_t *buffer, uint32_t 
             copy_len = (uint16)(length - ETH_HEADERSIZE);
         }
 
-        /* Only copy the payload feild(ECAT header and datagrams). */
+        /* Only copy the payload field (ECAT header and datagrams). */
         memcpy(port->rxbuf[idxf], buffer + ETH_HEADERSIZE, copy_len);
 
         port->rxsa[idxf] = oshw_ntohs(ehp->sa1);

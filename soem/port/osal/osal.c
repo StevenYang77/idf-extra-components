@@ -103,7 +103,7 @@ int osal_monotonic_sleep(ec_timet *ts)
         }
 
         uint32_t busy_usec = (remaining_usec > 1000)
-                                ? 1000 : (uint32_t)remaining_usec;
+                             ? 1000 : (uint32_t)remaining_usec;
         esp_rom_delay_us(busy_usec);
     }
 }
@@ -175,8 +175,8 @@ int osal_thread_create(void *thandle, int stacksize, void *func, void *param)
 int osal_thread_create_rt(void *thandle, int stacksize, void *func, void *param)
 {
     UBaseType_t priority = (configMAX_PRIORITIES > 2)
-                               ? configMAX_PRIORITIES - 2
-                               : configMAX_PRIORITIES - 1; /* exception: only 1 priority level. */
+                           ? configMAX_PRIORITIES - 2
+                           : configMAX_PRIORITIES - 1; /* exception: only 1 priority level. */
 
     return osal_task_create(thandle, stacksize, func, param, priority, "soem_worker_rt");
 }

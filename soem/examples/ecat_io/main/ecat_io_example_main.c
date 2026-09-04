@@ -188,13 +188,13 @@ static int example_configure_process_data_mapping(uint16_t slave_number)
 
     /* Use SM0 for process-data output, SM1 for process-data input. */
     int wkc = ecx_FPWR(&s_ecat_context->port, config_address, ECT_REG_SM0,
-                    sizeof(sm_output), &sm_output, EC_TIMEOUTRET3);
+                       sizeof(sm_output), &sm_output, EC_TIMEOUTRET3);
     if (wkc <= 0) {
         ESP_LOGE(TAG, "Failed to configure SM0: WKC=%d", wkc);
         return 0;
     }
     wkc = ecx_FPWR(&s_ecat_context->port, config_address, ECT_REG_SM1,
-                sizeof(sm_input), &sm_input, EC_TIMEOUTRET3);
+                   sizeof(sm_input), &sm_input, EC_TIMEOUTRET3);
     if (wkc <= 0) {
         ESP_LOGE(TAG, "Failed to configure SM1: WKC=%d", wkc);
         return 0;
@@ -202,13 +202,13 @@ static int example_configure_process_data_mapping(uint16_t slave_number)
 
     /* Use FMMU0 for process-data output, FMMU1 for process-data input. */
     wkc = ecx_FPWR(&s_ecat_context->port, config_address, ECT_REG_FMMU0,
-                sizeof(fmmu_output), &fmmu_output, EC_TIMEOUTRET3);
+                   sizeof(fmmu_output), &fmmu_output, EC_TIMEOUTRET3);
     if (wkc <= 0) {
         ESP_LOGE(TAG, "Failed to configure FMMU0: WKC=%d", wkc);
         return 0;
     }
     wkc = ecx_FPWR(&s_ecat_context->port, config_address, ECT_REG_FMMU1,
-                sizeof(fmmu_input), &fmmu_input, EC_TIMEOUTRET3);
+                   sizeof(fmmu_input), &fmmu_input, EC_TIMEOUTRET3);
     if (wkc <= 0) {
         ESP_LOGE(TAG, "Failed to configure FMMU1: WKC=%d", wkc);
         return 0;
@@ -391,7 +391,7 @@ void app_main(void)
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(esp_event_handler_register(
-        ETH_EVENT, ESP_EVENT_ANY_ID, eth_event_handler, NULL));
+                        ETH_EVENT, ESP_EVENT_ANY_ID, eth_event_handler, NULL));
 
     ESP_ERROR_CHECK(example_eth_init(&eth_handle));
     ESP_ERROR_CHECK(esp_eth_start(eth_handle));
@@ -420,15 +420,15 @@ void app_main(void)
     ESP_ERROR_CHECK(slave_count == 1 ? ESP_OK : ESP_ERR_INVALID_SIZE);
     ESP_ERROR_CHECK(
         ((slave->eep_man == EXPECTED_VENDOR_ID) &&
-        (slave->eep_id == EXPECTED_PRODUCT_ID) &&
-        (slave->eep_rev == EXPECTED_REVISION)) ? ESP_OK : ESP_ERR_INVALID_RESPONSE);
+         (slave->eep_id == EXPECTED_PRODUCT_ID) &&
+         (slave->eep_rev == EXPECTED_REVISION)) ? ESP_OK : ESP_ERR_INVALID_RESPONSE);
     ESP_LOGI(
         TAG, "Slave: vendor=0x%08" PRIx32 ", product=0x%08" PRIx32 ", revision=0x%08" PRIx32,
         slave->eep_man, slave->eep_id, slave->eep_rev);
 
     /* stage4: Ensure the slave is in PRE-OP before configuring the ESC. */
     ESP_ERROR_CHECK(example_request_state(
-        slave_index, EC_STATE_PRE_OP) ? ESP_OK : ESP_ERR_INVALID_STATE);
+                        slave_index, EC_STATE_PRE_OP) ? ESP_OK : ESP_ERR_INVALID_STATE);
     ESP_LOGI(TAG, "Slave reached PRE-OP");
 
     /* stage5: Configure process-data mapping. */
@@ -437,13 +437,13 @@ void app_main(void)
 
     /* stage6: Ask for entering SAFE-OP and confirm it. */
     ESP_ERROR_CHECK(example_request_state(
-        slave_index, EC_STATE_SAFE_OP) ? ESP_OK : ESP_ERR_INVALID_STATE);
+                        slave_index, EC_STATE_SAFE_OP) ? ESP_OK : ESP_ERR_INVALID_STATE);
     ESP_LOGI(TAG, "Slave reached SAFE-OP");
 
     /* stage7: Ask for entering OP state and confirm it.
        Process-data communication must remain active during such transition. */
     ESP_ERROR_CHECK(example_request_state_op(
-        slave_index) ? ESP_OK : ESP_ERR_INVALID_STATE);
+                        slave_index) ? ESP_OK : ESP_ERR_INVALID_STATE);
     ESP_LOGI(TAG, "Slave reached OP");
 
     /* stage8: Run cyclic IO closed-loop. */
