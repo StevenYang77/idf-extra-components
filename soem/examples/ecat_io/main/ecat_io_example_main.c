@@ -146,7 +146,8 @@ static esp_err_t example_eth_deinit(esp_eth_handle_t eth_handle)
     return phy->del(phy);
 }
 
-/* Configure the fixed process-data mapping used by this example(No CoE support).
+/* Configure the fixed process-data mapping used by this example.
+   Slave in example does not support CoE.
    Names follow the slave's perspective: IN/OUT focus on field-side, Rx/Tx focus on network-side. */
 static int example_configure_process_data_mapping(uint16_t slave_number)
 {
@@ -238,14 +239,14 @@ static int example_request_state(uint16_t slave_number, uint16_t requested_state
     slave->state = requested_state; /* Set target state wanted. */
     int wkc = ecx_writestate(s_ecat_context, slave_number);
     if (wkc <= 0) {
-        ESP_LOGE(TAG, "Failed to request state 0x%02x (wkc unexpected): WKC=%d", requested_state, wkc);
+        ESP_LOGE(TAG, "Failed to request state 0x%02x (unexpected WKC): WKC=%d", requested_state, wkc);
         return 0;
     }
 
     int64_t deadline = esp_timer_get_time() + EC_TIMEOUTSTATE; /* Set deadline timepoint in us. */
     do {
-        /* ecx_statecheck() return only the base state without the error flag,
-           but stores the complete AL Status and its Code in slave descriptor. */
+        /* ecx_statecheck() returns only the base state without the error flag,
+           but stores the complete AL Status and AL Status Code in slave descriptor. */
         (void)ecx_statecheck(s_ecat_context, slave_number, requested_state, EC_TIMEOUTRET);
         if (slave->state == requested_state) {
             return 1;
@@ -257,7 +258,7 @@ static int example_request_state(uint16_t slave_number, uint16_t requested_state
     return 0;
 }
 
-/* Request a OP state transition. Must Keep process-data exchange active. */
+/* Request an OP transition while keeping process-data exchange active. */
 static int example_request_state_op(uint16_t slave_number)
 {
     ec_slavet *slave = &s_ecat_context->slavelist[slave_number];
@@ -275,7 +276,7 @@ static int example_request_state_op(uint16_t slave_number)
     slave->state = EC_STATE_OPERATIONAL;
     wkc = ecx_writestate(s_ecat_context, slave_number);
     if (wkc <= 0) {
-        ESP_LOGE(TAG, "Failed to request state OP (wkc unexpected): WKC=%d", wkc);
+        ESP_LOGE(TAG, "Failed to request state OP (unexpected WKC): WKC=%d", wkc);
         return 0;
     }
 
@@ -308,10 +309,10 @@ static void example_cycle_timer_callback(void *arg)
 }
 
 /* Run cyclic LRW process-data exchange.
-   process_image[0] stands for output, while process_image[1] stands for input.
-   Hardware rule: When SW1 pressed, low level on pin. When high level on pin, LED3 ON.
-   Wanna achieve press SW1 make LED3 ON next cycle.
-   Use esp_timer to cyclly wake this task to achieve better timing resolution compared with tick-based delays. */
+   process_image[0] contains the output calculated from the previous input.
+   process_image[1] contains the current input.
+   SW1 is active low and LED3 is active high.
+   An esp_timer callback periodically notifies this task to start each cycle. */
 static void example_run_cyclic_io(ecx_contextt *context, EventGroupHandle_t eth_events)
 {
     uint8_t process_image[2] = {0};

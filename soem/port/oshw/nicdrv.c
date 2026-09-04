@@ -269,7 +269,7 @@ static esp_err_t ecx_esp_eth_rx(esp_eth_handle_t hdl, uint8_t *buffer, uint32_t 
     osal_mutex_lock(port->rx_mutex);
 
     if ((idxf < EC_MAXBUF) && (port->rxbufstat[idxf] == EC_BUF_TX)) {
-        /* Truncate the copy length to the actual received length(may shorter than Tx). */
+        /* Limit the copy to the actual received frame length. */
         copy_len = (uint16)(port->txbuflength[idxf] - ETH_HEADERSIZE);
         if (copy_len > (length - ETH_HEADERSIZE)) {
             copy_len = (uint16)(length - ETH_HEADERSIZE);
